@@ -1,0 +1,193 @@
+# app.py
+import streamlit as st
+import sqlite3
+from pathlib import Path
+from datetime import datetime
+import uuid
+import os
+
+# ---------- CONFIG ----------
+DB_PATH = Path("data/lost_and_found.db")
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+st.set_page_config(page_title="FindGoods", page_icon="🎒", layout="wide")
+
+# ---------- DATABASE ----------
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+conn.row_factory = sqlite3.Row
+cur = conn.cursor()
+
+# Create tables if not exist
+cur.execute("""
+CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    image_path TEXT,
+    reporter TEXT,
+    reported_at TEXT,
+    is_claimed INTEGER DEFAULT 0,
+    claimer TEXT
+);
+""")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY,
+    item_id TEXT,
+    commenter TEXT,
+    comment TEXT,
+    commented_at TEXT,
+    FOREIGN KEY(item_id) REFERENCES items(id)
+);
+""")
+conn.commit()
+
+# ---------- HELPERS ----------
+def save_image(uploaded_file) -> str:
+    if uploaded_file is None:
+        return ""
+    ext = Path(uploaded_file.name).suffix
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / filename
+    with open(dest, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return str(dest)
+
+def add_item(name, description, image_path, reporter):
+    item_id = uuid.uuid4().hex
+    cur.execute("""
+        INSERT INTO items (id, name, description, image_path, reporter, reported_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (item_id, name, description, image_path, reporter, datetime.utcnow().isoformat()))
+    conn.commit()
+    return item_id
+
+def list_items(search=None, show_only_unclaimed=False):
+    query = "SELECT * FROM items"
+    params = []
+    clauses = []
+    if search:
+        clauses.append("LOWER(name) LIKE ?")
+        params.append(f"%{search.lower()}%")
+    if show_only_unclaimed:
+        clauses.append("is_claimed = 0")
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY reported_at DESC"
+    cur.execute(query, params)
+    return cur.fetchall()
+
+def get_item(item_id):
+    cur.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    return cur.fetchone()
+
+def add_comment(item_id, commenter, comment):
+    comment_id = uuid.uuid4().hex
+    cur.execute("""
+        INSERT INTO comments (id, item_id, commenter, comment, commented_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (comment_id, item_id, commenter, comment, datetime.utcnow().isoformat()))
+    conn.commit()
+
+def get_comments(item_id):
+    cur.execute("SELECT * FROM comments WHERE item_id = ? ORDER BY commented_at ASC", (item_id,))
+    return cur.fetchall()
+
+def toggle_claim(item_id, claimer_name=None):
+    item = get_item(item_id)
+    if not item:
+        return False
+    if item["is_claimed"]:
+        cur.execute("UPDATE items SET is_claimed = 0, claimer = NULL WHERE id = ?", (item_id,))
+    else:
+        cur.execute("UPDATE items SET is_claimed = 1, claimer = ? WHERE id = ?", (claimer_name, item_id))
+    conn.commit()
+    return True
+
+# ---------- UI ----------
+st.title("🎒 FindGoods ")
+st.title("A web app to help you find lost items.")
+st.write("Report lost items, comment, and claim items.")
+
+left, right = st.columns([1, 2])
+
+# --- Post lost item ---
+with left:
+    st.header("Report a Lost Item")
+    with st.form("report_form", clear_on_submit=True):
+        reporter = st.text_input("Your name", value="")
+        item_name = st.text_input("Item name")
+        description = st.text_area("Description")
+        uploaded_file = st.file_uploader("Image (optional)", type=["png","jpg","jpeg","gif"])
+        submitted = st.form_submit_button("Post item")
+        if submitted:
+            if not item_name.strip():
+                st.error("Please enter item name.")
+            else:
+                image_path = save_image(uploaded_file) if uploaded_file else ""
+                add_item(item_name.strip(), description.strip(), image_path, reporter.strip() or "Anonymous")
+                st.success("Item reported!")
+
+# --- Search & browse ---
+with right:
+    st.header("Search & Browse Items")
+    search = st.text_input("Search by name")
+    show_unclaimed = st.checkbox("Show only unclaimed", value=False)
+
+    items = list_items(search=search.strip() or None, show_only_unclaimed=show_unclaimed)
+    st.write(f"Showing {len(items)} items.")
+
+    for item in items:
+        item_id = item["id"]
+        cols = st.columns([1,3,1])
+        with cols[0]:
+            if item["image_path"] and Path(item["image_path"]).exists():
+                st.image(str(item["image_path"]), use_column_width=True)
+            else:
+                st.write("No image")
+        with cols[1]:
+            header_line = f"**{item['name']}**"
+            if item["is_claimed"]:
+                header_line += f"  —  :heavy_check_mark: Claimed by {item['claimer']}"
+            st.markdown(header_line)
+            st.markdown(f"**Reported by:** {item['reporter']} • **At:** {item['reported_at']}")
+            if item["description"]:
+                st.write(item["description"])
+            
+            # Comments
+            with st.expander("Comments & Actions", expanded=False):
+                comments = get_comments(item_id)
+                if comments:
+                    for c in comments:
+                        st.markdown(f"- *{c['commenter']}* ({c['commented_at']}): {c['comment']}")
+                else:
+                    st.write("No comments yet.")
+                
+                with st.form(f"comment_form_{item_id}", clear_on_submit=True):
+                    commenter = st.text_input("Your name", key=f"name_{item_id}")
+                    comment_text = st.text_area("Comment", key=f"comment_{item_id}")
+                    post_comment = st.form_submit_button("Post comment")
+                    if post_comment and comment_text.strip():
+                        add_comment(item_id, commenter.strip() or "Anonymous", comment_text.strip())
+                        st.success("Comment posted!")
+                        st.experimental_rerun()
+
+                # Claim / Unclaim
+                if item["is_claimed"]:
+                    st.info(f"Claimed by {item['claimer']}")
+                    if st.button("Unclaim", key=f"unclaim_{item_id}"):
+                        toggle_claim(item_id)
+                        st.success("Item unclaimed")
+                        st.experimental_rerun()
+                else:
+                    claimer_name = st.text_input("Your name to claim", key=f"claimer_{item_id}")
+                    if st.button("Claim", key=f"claim_{item_id}"):
+                        if claimer_name.strip():
+                            toggle_claim(item_id, claimer_name.strip())
+                            st.success("Item claimed")
+                            st.experimental_rerun()
+                        else:
+                            st.warning("Enter your name to claim")
+        st.markdown("---")
