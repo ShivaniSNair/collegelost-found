@@ -171,7 +171,7 @@ with right:
                     if post_comment and comment_text.strip():
                         add_comment(item_id, commenter.strip() or "Anonymous", comment_text.strip())
                         st.success("Comment posted!")
-                        st.experimental_rerun()
+                        st.rerun()
 
                 
                 if item["is_claimed"]:
@@ -179,14 +179,14 @@ with right:
                     if st.button("Unclaim", key=f"unclaim_{item_id}"):
                         toggle_claim(item_id)
                         st.success("Item unclaimed")
-                        st.experimental_rerun()
+                        st.rerun()
                 else:
                     claimer_name = st.text_input("Your name to claim", key=f"claimer_{item_id}")
                     if st.button("Claim", key=f"claim_{item_id}"):
                         if claimer_name.strip():
                             toggle_claim(item_id, claimer_name.strip())
                             st.success("Item claimed")
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.warning("Enter your name to claim")
         st.markdown("---")
