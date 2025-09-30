@@ -143,7 +143,7 @@ with right:
         cols = st.columns([1,3,1])
         with cols[0]:
             if item["image_path"] and Path(item["image_path"]).exists():
-                st.image(str(item["image_path"]), use_column_width=True)
+                st.image(str(item["image_path"]), use_container_width=True)
             else:
                 st.write("No image")
         with cols[1]:
