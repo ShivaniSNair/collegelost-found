@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid
 import os
 
-# ---------- CONFIG ----------
+
 DB_PATH = Path("data/lost_and_found.db")
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -13,12 +13,12 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 st.set_page_config(page_title="FindGoods", page_icon="🎒", layout="wide")
 
-# ---------- DATABASE ----------
+
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 conn.row_factory = sqlite3.Row
 cur = conn.cursor()
 
-# Create tables if not exist
+
 cur.execute("""
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS comments (
 """)
 conn.commit()
 
-# ---------- HELPERS ----------
+
 def save_image(uploaded_file) -> str:
     if uploaded_file is None:
         return ""
@@ -105,14 +105,14 @@ def toggle_claim(item_id, claimer_name=None):
     conn.commit()
     return True
 
-# ---------- UI ----------
+#user interface
 st.title("🎒 FindGoods ")
 st.title("A web app to help you find lost items.")
 st.write("Report lost items, comment, and claim items.")
 
 left, right = st.columns([1, 2])
 
-# --- Post lost item ---
+
 with left:
     st.header("Report a Lost Item")
     with st.form("report_form", clear_on_submit=True):
@@ -129,7 +129,7 @@ with left:
                 add_item(item_name.strip(), description.strip(), image_path, reporter.strip() or "Anonymous")
                 st.success("Item reported!")
 
-# --- Search & browse ---
+
 with right:
     st.header("Search & Browse Items")
     search = st.text_input("Search by name")
@@ -155,7 +155,7 @@ with right:
             if item["description"]:
                 st.write(item["description"])
             
-            # Comments
+            
             with st.expander("Comments & Actions", expanded=False):
                 comments = get_comments(item_id)
                 if comments:
@@ -173,7 +173,7 @@ with right:
                         st.success("Comment posted!")
                         st.experimental_rerun()
 
-                # Claim / Unclaim
+                
                 if item["is_claimed"]:
                     st.info(f"Claimed by {item['claimer']}")
                     if st.button("Unclaim", key=f"unclaim_{item_id}"):
