@@ -13,11 +13,12 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 st.set_page_config(page_title="FindGoods", page_icon="🎒", layout="wide")
 
+
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 conn.row_factory = sqlite3.Row
 cur = conn.cursor()
 
-# ----------------- DB Setup -----------------
+
 cur.execute("""
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -104,15 +105,10 @@ def toggle_claim(item_id, claimer_name=None):
     conn.commit()
     return True
 
-def delete_item(item_id):
-    cur.execute("DELETE FROM comments WHERE item_id = ?", (item_id,))
-    cur.execute("DELETE FROM items WHERE id = ?", (item_id,))
-    conn.commit()
-
-#UI
+#user interface
 st.title("🎒 FindGoods ")
 st.title("A web app to help you find lost items.")
-st.write("Report lost items, comment, claim items, or delete if necessary.")
+st.write("Report lost items, comment, and claim items.")
 
 left, right = st.columns([1, 2])
 
@@ -159,6 +155,7 @@ with right:
             if item["description"]:
                 st.write(item["description"])
             
+            
             with st.expander("Comments & Actions", expanded=False):
                 comments = get_comments(item_id)
                 if comments:
@@ -192,10 +189,4 @@ with right:
                             st.rerun()
                         else:
                             st.warning("Enter your name to claim")
-
-               
-                if st.button("❌ Delete this item", key=f"delete_{item_id}"):
-                    delete_item(item_id)
-                    st.success("Item deleted")
-                    st.rerun()
         st.markdown("---")
